@@ -1,9 +1,14 @@
+*.au
 *.fifo
 *.lock
 *.log
+*.mp3
 *.o
 *.pid
 *~
 /subject
 /player
 
+# Rlwrap history files
+/aoss_history
+/player_history
