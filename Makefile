@@ -6,14 +6,12 @@ LDFLAGS = -Wall -pedantic -g -std=c99
 
 # Recompile everything if headers change
 HEADERS = daemon.h
-
-# Daemon files
-DAEMON_SOURCES = main.c daemon.c player.c
-DAEMON_OBJS = $(DAEMON_SOURCES:%.c=%.o)
-DAEMON_BIN = player
+SOURCES = main.c daemon.c player.c
+OBJS = $(SOURCES:%.c=%.o)
+BIN = player
 
 # Targets
-TARGETS = $(DAEMON_BIN)
+TARGETS = $(BIN)
 
 all: $(TARGETS)
 
@@ -24,7 +22,7 @@ clean:
 distclean: clean
 	rm -f $(TARGETS) *.a *.so
 
-$(DAEMON_BIN): $(DAEMON_OBJS)
+$(BIN): $(OBJS)
 	$(LD) $(LDFLAGS) $^ -o $@
 
 %.o: %.c $(HEADERS)
