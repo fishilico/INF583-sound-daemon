@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include "daemon.h"
@@ -98,7 +99,8 @@ int main(int argc, char **argv)
 
         // Main loop
         char line[LINE_MAXLEN + 1];
-        while (ret == 0) {
+        int running = 1;
+        while (ret == 0 && running) {
             // Open the FIFO
             int fifo = open(DAEMON_FIFOFILE, O_RDONLY);
             if (fifo == -1) {
@@ -112,6 +114,11 @@ int main(int argc, char **argv)
             while ((fifo_status = read_line(fifo, line, LINE_MAXLEN, NULL)) == 0) {
                 printf("Reading line: %s\n", line);
                 fflush(stdout);
+
+                if (!strcasecmp(line, "exit")) {
+                    running = 0;
+                    break;
+                }
             }
 
             if (fifo_status == -1) {
@@ -144,13 +151,22 @@ int main(int argc, char **argv)
         char line[LINE_MAXLEN + 1];
         const char *prompt = "Player> ";
         while ((stdin_status = read_line(STDIN_FILENO, line, LINE_MAXLEN, prompt)) == 0) {
-            printf("Sending line: %s\n", line);
-            fflush(stdout);
-            int len = strlen(line);
-            // As len < LINE_MAXLEN, len + 1 < sizeof(line) and there is no overflow
-            line[len] = '\n';
-            line[len + 1] = 0;
-            write(fifo, line, len + 1);
+            if (line[0] != '!') {
+                // Send command
+                int len = strlen(line);
+                // As len < LINE_MAXLEN, len + 1 < sizeof(line) and there is no overflow
+                line[len] = '\n';
+                line[len + 1] = 0;
+                write(fifo, line, len + 1);
+
+                if (!strcasecmp(line, "exit\n")) {
+                    // Quit everything
+                    break;
+                }
+            } else if (!strcasecmp(line, "!exit")) {
+                // Detach the interface by closing the FIFO
+                break;
+            }
         }
 
         if (stdin_status == -1) {
