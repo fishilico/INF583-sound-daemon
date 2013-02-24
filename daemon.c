@@ -11,7 +11,7 @@
 
 /**
  * Detach from current process and run in background
- * @return 0 if successful, -1 otherwise
+ * @return 0 for the daemon, 1 for the parent, -1 is an error occured
  */
 int daemon_fork(const char* dirpath)
 {
@@ -37,8 +37,7 @@ int daemon_fork(const char* dirpath)
                 fprintf(stderr, "Error status from child process: %d\n", status);
                 return -1;
             }
-            printf("[daemon_fork] Parent process now exits\n");
-            exit(0);
+            return 1;
     }
 
     // Second fork
@@ -49,11 +48,11 @@ int daemon_fork(const char* dirpath)
             return -1;
 
         case 0:
-            // Child
+            // Child which is the daemon
             break;
 
         default:
-            // Parent
+            // Daemon's parent, who dies without waiting for its child
             printf("[daemon_fork] Parent of the child process now exits\n");
             exit(0);
     }
@@ -92,7 +91,7 @@ int daemon_lock(const char* lockfile)
     }
     if (flock(l_fd, LOCK_EX | LOCK_NB) == -1) {
         if (errno == EWOULDBLOCK) {
-            fprintf(stderr, "The daemon is already running!\n");
+            fprintf(stderr, "The daemon is already running.\n");
         } else {
             perror("flock");
         }
@@ -158,14 +157,22 @@ int daemon_create_pid_file(const char *pidfile)
 
 /**
  * Call all other functions
+ * Return 0 for the daemon, 1 for the parent, -1 if fork failed.
  */
 int daemonize(const char* dirpath, const char* lockfile,
               const char *logfile, const char *pidfile)
 {
-    if (daemon_fork(dirpath) == -1) return -1;
-    if (daemon_lock(lockfile) == -1) return -1;
-    if (daemon_dissociate_term(logfile ? logfile : "/dev/null") == -1) return -1;
-    if (pidfile && daemon_create_pid_file(pidfile) == -1) return -1;
-    return 0;
+    int ret = daemon_fork(dirpath);
+    if (ret == -1) return -1;
+    if (ret == 0) {
+        // Daemon things
+        if ((daemon_lock(lockfile) == -1) ||
+            (pidfile && daemon_create_pid_file(pidfile) == -1) ||
+            (daemon_dissociate_term(logfile ? logfile : "/dev/null") == -1)) {
+            // Daemon exits if previous calls failed
+            exit(1);
+        }
+    }
+    return ret;
 }
 

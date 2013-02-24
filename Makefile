@@ -8,7 +8,7 @@ LDFLAGS = -Wall -pedantic -g -std=c99
 HEADERS = daemon.h
 
 # Daemon files
-DAEMON_SOURCES = main-daemon.c daemon.c player.c
+DAEMON_SOURCES = main.c daemon.c player.c
 DAEMON_OBJS = $(DAEMON_SOURCES:%.c=%.o)
 DAEMON_BIN = playerd
 
