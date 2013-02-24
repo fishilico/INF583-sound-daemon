@@ -10,7 +10,7 @@ HEADERS = daemon.h
 # Daemon files
 DAEMON_SOURCES = main.c daemon.c player.c
 DAEMON_OBJS = $(DAEMON_SOURCES:%.c=%.o)
-DAEMON_BIN = playerd
+DAEMON_BIN = player
 
 # Targets
 TARGETS = $(DAEMON_BIN)

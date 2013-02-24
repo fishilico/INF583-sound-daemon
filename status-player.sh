@@ -1,5 +1,5 @@
 #!/bin/sh
-# Get playerd daemon status
+# Get player daemon status
 
 PIDFILE="daemon.pid"
 if [ ! -f "$PIDFILE" ]

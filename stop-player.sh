@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stop playerd daemon
+# Stop player daemon
 
 PIDFILE="daemon.pid"
 if [ ! -f "$PIDFILE" ]
