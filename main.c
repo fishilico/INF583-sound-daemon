@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -14,6 +15,13 @@
 #define DAEMON_FIFOFILE "daemon.fifo"
 
 #define LINE_MAXLEN 1024
+
+// Set to 1 when an INT, TERM or QUIT signal is received
+static int has_terminated_signal = 0;
+
+void sighandler_term(int sig) {
+    has_terminated_signal = 1;
+}
 
 /**
  * Read a line from the file descriptor into the buffer of size bufsize
@@ -32,7 +40,7 @@ int read_line(int fd, char *buffer, size_t bufsize, const char *prompt)
         fprintf(stdout, prompt);
         fflush(stdout);
     }
-    while ((ret = read(fd, &c, 1)) == 1) {
+    while (!has_terminated_signal && (ret = read(fd, &c, 1)) == 1) {
         if (c == '\n' || c == '\r') {
             // Read an end of line
             if (index > 0) {
@@ -54,6 +62,14 @@ int read_line(int fd, char *buffer, size_t bufsize, const char *prompt)
             buffer[index] = c;
             index ++;
         }
+    }
+    // Use end-of-file behaviour when a terminating signal has been received
+    if (has_terminated_signal) {
+        if (prompt != NULL) {
+            fprintf(stdout, "\n");
+            fflush(stdout);
+        }
+        ret = 0;
     }
     // Something went wrong here, end of file or error
     if (ret == -1) {
@@ -82,7 +98,6 @@ int main(int argc, char **argv)
         return 1;
     }
 
-
     // Both daemon and parent try to create a named pipe.
     // Only the first mkfifo succeeds.
     if (mkfifo(DAEMON_FIFOFILE, S_IRUSR|S_IWUSR) == -1) {
@@ -92,6 +107,13 @@ int main(int argc, char **argv)
         }
     }
 
+    // Setup signals
+    signal(SIGINT, sighandler_term);
+    signal(SIGQUIT, sighandler_term);
+    signal(SIGTERM, sighandler_term);
+    // Terminate on broken pipe signal
+    signal(SIGPIPE, sighandler_term);
+
     if (prog == 0) {
         // Daemon process
         printf("[main] >> Daemon is running :)\n");
@@ -100,10 +122,14 @@ int main(int argc, char **argv)
         // Main loop
         char line[LINE_MAXLEN + 1];
         int running = 1;
-        while (ret == 0 && running) {
+        while (ret == 0 && running && !has_terminated_signal) {
             // Open the FIFO
             int fifo = open(DAEMON_FIFOFILE, O_RDONLY);
             if (fifo == -1) {
+                if (errno == EINTR && has_terminated_signal) {
+                    printf("Received termination signal\n");
+                    break;
+                }
                 perror("open(fifo)");
                 ret = 1;
                 break;
@@ -157,7 +183,11 @@ int main(int argc, char **argv)
                 // As len < LINE_MAXLEN, len + 1 < sizeof(line) and there is no overflow
                 line[len] = '\n';
                 line[len + 1] = 0;
-                write(fifo, line, len + 1);
+                if (write(fifo, line, len + 1) == -1) {
+                    perror("write(fifo)");
+                    ret = 1;
+                    break;
+                }
 
                 if (!strcasecmp(line, "exit\n")) {
                     // Quit everything
@@ -174,6 +204,7 @@ int main(int argc, char **argv)
             ret = 1;
         }
         close(fifo);
+        printf("[main] << Interface exits with value %d\n", ret);
     }
 
     return ret;
