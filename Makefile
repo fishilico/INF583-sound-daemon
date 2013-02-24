@@ -5,7 +5,7 @@ LD = gcc
 LDFLAGS = -Wall -pedantic -g -std=c99
 
 # Recompile everything if headers change
-HEADERS = daemon.h
+HEADERS = daemon.h player.h
 SOURCES = main.c daemon.c player.c
 OBJS = $(SOURCES:%.c=%.o)
 BIN = player

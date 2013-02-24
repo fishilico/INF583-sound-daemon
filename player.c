@@ -7,6 +7,7 @@
 #include <sys/ioctl.h>
 #include <sys/soundcard.h>
 #include <netinet/in.h>
+#include "player.h"
 
 // Length of the buffer in seconds
 #define BUF_SEC 2
@@ -37,20 +38,6 @@
         } \
     } \
     while (0)
-
-// Std ints
-#include <stdint.h>
-
-// Music file handle
-typedef struct
-{
-    FILE *file;
-    uint_fast32_t oss_format;
-    uint_fast32_t channels;
-    uint_fast32_t sample_rate;
-    uint_fast32_t bits_per_sample;
-    uint_fast32_t data_size;
-} music_file_t;
 
 // Endianness
 #include <sys/types.h>
@@ -290,25 +277,14 @@ int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
     return 0;
 }
 
-
 /*****
- * Main function
+ * Play a file
  *****/
-int player_main(int argc, char ** argv)
+int play_file(const char *file_name)
 {
-    // Args
-    if (argc != 2) {
-        fprintf(stderr, "Wrong number of args.\n");
-        return 1;
-    }
-
     /*****
      * Step 1: opening the music file
      *****/
-
-    // File name
-    char const * file_name = argv[1];
-    printf("File name: '%s'.\n", file_name);
 
     // File Handler
     music_file_t audio_file;
@@ -372,25 +348,19 @@ int player_main(int argc, char ** argv)
         return 2;
     }
 
-    // Encapsulate the fd in a stream
-    FILE * file_dsp = fdopen (fd_dsp, "w");
-    if (file_dsp == NULL) {
-        fprintf(stderr, "Couldn't stream the output to the sound device.\n");
-        return 2;
-    }
-
     /*****
      * Step 3: let's rock baby !!!
      *****/
 
     // Alloc the buffer used to play
     unsigned int buf_size = BUF_SEC * oct_per_sec;
-    unsigned char * buf = malloc (buf_size);
+    unsigned char *buf = malloc(buf_size);
 
-    if (! buf) {
+    if (!buf) {
         fprintf(stderr, "Couldn't allocate the buffer to play the file.\n");
         return 2;
     }
+    fflush(stdout);
 
     // Finally, we play the file
     do {
@@ -398,23 +368,41 @@ int player_main(int argc, char ** argv)
         MY_READ(audio_file.file, buf, buf_size);
 
         size_t rl = ret;
-        ret = fwrite (buf, 1, rl, file_dsp);
+        ret = write(fd_dsp, buf, rl);
         if (ret != rl) {
             fprintf(stderr, "Writing to the sound device failed.\n");
             return 2;
         }
     } while (ret);
 
-    if (ferror (audio_file.file)) {
+    if (ferror(audio_file.file)) {
         fprintf(stderr, "An error occured while reading the file.\n");
         return 2;
     }
 
     // Close the open files
-    fclose (file_dsp);
-    fclose (audio_file.file);
+    close(fd_dsp);
+    fclose(audio_file.file);
 
     // Free the memory
     free(buf);
     return 0;
+}
+
+/*****
+ * Main function
+ *****/
+int player_main(int argc, char ** argv)
+{
+    // Args
+    if (argc != 2) {
+        fprintf(stderr, "Wrong number of args.\n");
+        return 1;
+    }
+
+    // File name
+    char const * file_name = argv[1];
+    printf("File name: '%s'.\n", file_name);
+
+    return play_file(file_name);
 }

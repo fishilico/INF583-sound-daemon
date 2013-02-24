@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "daemon.h"
+#include "player.h"
 
 #define DAEMON_DIRECTORY "."
 #define DAEMON_LOCKFILE "daemon.lock"
@@ -144,6 +145,15 @@ int main(int argc, char **argv)
                 if (!strcasecmp(line, "exit")) {
                     running = 0;
                     break;
+                } else if (!strncasecmp(line, "play ", 5)) {
+                    const char *filename = line + 5;
+                    printf("Playing %s\n", filename);
+                    fflush(stdout);
+                    if (play_file(filename)) {
+                        fprintf(stderr, "play_file failed\n");
+                    } else {
+                        printf("Playing ended\n");
+                    }
                 }
             }
 
