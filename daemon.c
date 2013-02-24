@@ -107,7 +107,7 @@ int daemon_lock(const char* lockfile)
 int daemon_dissociate_term(const char *logfile)
 {
     int ret = 0;
-    int logfd = open(logfile, O_WRONLY | O_CREAT);
+    int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC);
     if (logfd == -1) {
         perror("open(log)");
         return -1;
