@@ -22,11 +22,11 @@ int daemon_fork(const char* dirpath)
         case -1:
             perror("Fork failed");
             return -1;
-        
+
         case 0:
             // Child
             break;
-        
+
         default:
             // Parent
             if (waitpid(pid, &status, 0) == -1) {
@@ -47,11 +47,11 @@ int daemon_fork(const char* dirpath)
         case -1:
             perror("Fork failed");
             return -1;
-        
+
         case 0:
             // Child
             break;
-        
+
         default:
             // Parent
             printf("[daemon_fork] Parent of the child process now exits\n");
@@ -119,7 +119,7 @@ int daemon_dissociate_term(const char *logfile)
         return -1;
     }
 
-    
+
     if (dup2(zerofd, 0) == -1) { // IN
         perror("dup2(in)");
         ret = -1;
