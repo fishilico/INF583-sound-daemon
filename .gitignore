@@ -1,6 +1,8 @@
+*.fifo
 *.lock
 *.log
 *.o
+*.pid
 *~
 /subject
 /playerd
