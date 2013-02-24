@@ -1,0 +1,6 @@
+*.lock
+*.o
+*~
+/subject
+/playerd
+
