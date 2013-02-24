@@ -3,8 +3,13 @@
 #include <unistd.h>
 #include "daemon.h"
 
+#define DAEMON_DIRECTORY "."
+#define DAEMON_LOCKFILE "daemon.lock"
+#define DAEMON_LOGFILE "daemon.log"
+#define DAEMON_PIDFILE "daemon.pid"
+
 int main(int argc, char **argv) {
-    if (daemonize(".", "daemon.lock", "daemon.log") == -1) {
+    if (daemonize(DAEMON_DIRECTORY, DAEMON_LOCKFILE, DAEMON_LOGFILE, DAEMON_PIDFILE) == -1) {
         fprintf(stderr, "Daemonization failed\n");
         return 1;
     }

@@ -136,13 +136,36 @@ int daemon_dissociate_term(const char *logfile)
 }
 
 /**
+ * Create a PID file
+ */
+int daemon_create_pid_file(const char *pidfile)
+{
+    char buffer[50];
+    int len = sprintf(buffer, "%d\n", getpid());
+    FILE *f = fopen(pidfile, "w");
+    if (!f) {
+        perror("fopen(pidfile)");
+        return -1;
+    }
+    if (fwrite(buffer, 1, len, f) != len) {
+        perror("fwrite(pidfile)");
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+    return 0;
+}
+
+/**
  * Call all other functions
  */
-int daemonize(const char* dirpath, const char* lockfile, const char *logfile)
+int daemonize(const char* dirpath, const char* lockfile,
+              const char *logfile, const char *pidfile)
 {
     if (daemon_fork(dirpath) == -1) return -1;
     if (daemon_lock(lockfile) == -1) return -1;
-    if (daemon_dissociate_term(logfile) == -1) return -1;
+    if (daemon_dissociate_term(logfile ? logfile : "/dev/null") == -1) return -1;
+    if (pidfile && daemon_create_pid_file(pidfile) == -1) return -1;
     return 0;
 }
 
