@@ -37,7 +37,7 @@ int daemon_fork(const char* dirpath)
                 fprintf(stderr, "Error status from child process: %d\n", status);
                 return -1;
             }
-            printf("[daemon] Parent process now exits\n");
+            printf("[daemon_fork] Parent process now exits\n");
             exit(0);
     }
 
@@ -54,7 +54,7 @@ int daemon_fork(const char* dirpath)
         
         default:
             // Parent
-            printf("[daemon] Parent of the child process now exits\n");
+            printf("[daemon_fork] Parent of the child process now exits\n");
             exit(0);
     }
 
