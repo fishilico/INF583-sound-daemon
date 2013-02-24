@@ -13,7 +13,7 @@
  * Detach from current process and run in background
  * @return 0 for the daemon, 1 for the parent, -1 is an error occured
  */
-int daemon_fork(const char* dirpath)
+int daemon_fork()
 {
     // First fork
     int pid = fork();
@@ -53,34 +53,16 @@ int daemon_fork(const char* dirpath)
 
         default:
             // Daemon's parent, who dies without waiting for its child
-            printf("[daemon_fork] Parent of the child process now exits\n");
+            //printf("[daemon_fork] Parent of the child process now exits\n");
             exit(0);
     }
-
-    // Create a new session
-    pid_t sid = setsid();
-    if (sid == -1) {
-        perror("setsid");
-        return -1;
-    }
-    if (sid != getpid()) {
-        fprintf(stderr, "Session creation failed: sessions %u for PID %u\n",
-            sid, getpid());
-        return -1;
-    }
-
-    // Change directory
-    if (dirpath != NULL && chdir(dirpath) == -1) {
-        perror("chdir");
-        return -1;
-    }
-
     return 0;
 }
 
 /**
  * Lock a file
- * @return FD to locked file if successful, -1 otherwise
+ * @return FD to locked file if successful, -2 if the file is already locked,
+ * -1 otherwise
  */
 int daemon_lock(const char* lockfile)
 {
@@ -91,13 +73,32 @@ int daemon_lock(const char* lockfile)
     }
     if (flock(l_fd, LOCK_EX | LOCK_NB) == -1) {
         if (errno == EWOULDBLOCK) {
-            fprintf(stderr, "The daemon is already running.\n");
+            return -2;
         } else {
             perror("flock");
         }
         return -1;
     }
     return l_fd;
+}
+
+/**
+ * Create a new session
+ */
+int daemon_new_session()
+{
+    // Create a new session
+    pid_t sid = setsid();
+    if (sid == -1) {
+        perror("setsid");
+        return -1;
+    }
+    if (sid != getpid()) {
+        fprintf(stderr, "Session creation failed: sessions %d for PID %d\n",
+            sid, getpid());
+        return -1;
+    }
+    return 0;
 }
 
 /**
@@ -162,16 +163,39 @@ int daemon_create_pid_file(const char *pidfile)
 int daemonize(const char* dirpath, const char* lockfile,
               const char *logfile, const char *pidfile)
 {
-    int ret = daemon_fork(dirpath);
+    // Try to lock file to see if there already is a daemon
+    int lockfd = daemon_lock(lockfile);
+    if (lockfd == -1) {
+        return -1;
+    } else if (lockfd == -2) {
+        printf("Daemon is already running, don't start it.\n");
+        return 1;
+    }
+
+    // Fork
+    int ret = daemon_fork();
     if (ret == -1) return -1;
-    if (ret == 0) {
-        // Daemon things
-        if ((daemon_lock(lockfile) == -1) ||
-            (pidfile && daemon_create_pid_file(pidfile) == -1) ||
-            (daemon_dissociate_term(logfile ? logfile : "/dev/null") == -1)) {
-            // Daemon exits if previous calls failed
+    else if (ret == 0) {
+        // Set up daemon-specific things
+        // Set current working directory
+        if (dirpath != NULL && chdir(dirpath) == -1) {
+            perror("chdir");
             exit(1);
         }
+        // Save PID
+        if (pidfile != NULL && daemon_create_pid_file(pidfile) == -1) {
+            exit(1);
+        }
+        // Create a new session
+        if (daemon_new_session() == -1) {
+            exit(1);
+        }
+        // Dissociate from terminal
+        if (daemon_dissociate_term(logfile ? logfile : "/dev/null") == -1) {
+            exit(1);
+        }
+    } else {
+        printf("Daemon is started.\n");
     }
     return ret;
 }

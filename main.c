@@ -117,7 +117,7 @@ int main(int argc, char **argv)
 
     if (prog == 0) {
         // Daemon process
-        printf("[main] >> Daemon is running :)\n");
+        printf(">> Daemon is running :)\n");
         fflush(stdout);
 
         // Main loop
@@ -167,12 +167,12 @@ int main(int argc, char **argv)
         }
 
         unlink(DAEMON_FIFOFILE);
-        printf("[main] << Daemon now exits with value %d\n", ret);
+        printf("<< Daemon now exits with value %d\n", ret);
         unlink(DAEMON_PIDFILE);
         unlink(DAEMON_LOCKFILE);
     } else {
         // Interface process
-        printf("[main] >> Interface is running :)\n");
+        printf(">> Interface is running :)\n");
         fflush(stdout);
 
         // Open the FIFO in write only
@@ -214,7 +214,7 @@ int main(int argc, char **argv)
             ret = 1;
         }
         close(fifo);
-        printf("[main] << Interface exits with value %d\n", ret);
+        printf("<< Interface exits with value %d\n", ret);
     }
 
     return ret;
