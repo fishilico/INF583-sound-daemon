@@ -1,8 +1,9 @@
 #define _POSIX_C_SOURCE 1
 
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <fcntl.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/soundcard.h>
@@ -56,9 +57,9 @@
 
 
 
-/*****
+/**
  * Read info in WAV files.
- *****/
+ */
 int wave_opener(music_file_t * file_info)
 {
     // Apart from the magic numbers, the RIFF spec says that everything
@@ -172,10 +173,9 @@ int wave_opener(music_file_t * file_info)
 }
 
 
-
-/*****
+/**
  * Read informations in AU files
- *****/
+ */
 int au_opener(music_file_t * file_info)
 {
     int ret;
@@ -232,7 +232,7 @@ int au_opener(music_file_t * file_info)
     file_info -> channels = channels;
 
     // Position the cursor to the beginning of the data section
-    if (fseek (file, header_size, SEEK_SET) == -1) {
+    if (fseek(file, header_size, SEEK_SET) == -1) {
         perror("fseek");
         return 2;
     }
@@ -241,10 +241,52 @@ int au_opener(music_file_t * file_info)
 }
 
 
+/**
+ * Open a music file in AU or WAVE format
+ * Please call fclose(file_info->file) to free the file descriptor
+ */
+int open_music_file(const char *file_name, music_file_t *file_info)
+{
+    // Open file
+    file_info->file = fopen (file_name, "rb");
+    if (file_info->file == NULL) {
+        fprintf(stderr, "Couldn't open the file!\n");
+        return 2;
+    }
 
-/*****
+    // Look for magic number to determine file type
+    int ret;
+    uint32_t magic_number;
+    MY_READ(file_info->file, & magic_number, sizeof(magic_number));
+    magic_number = ntohl (magic_number);
+
+    if (magic_number == 0x52494646) {
+        printf("File supposedly a WAVE file.\n");
+        // Seems to be a RIFF file. Try to see if it's a WAVE one.
+        ret = wave_opener(file_info);
+    } else if (magic_number == 0x2e736e64) {
+        printf("File supposedly an AU file.\n");
+        // Decode file header
+        ret = au_opener(file_info);
+    } else {
+        fprintf(stderr, "File format not recognized.\n");
+        fclose(file_info->file);
+        return 2;
+    }
+
+    if (ret) {
+        fprintf(stderr, "Header parsing failed! File may have been corrupted.\n");
+        fclose(file_info->file);
+        return 2;
+    }
+
+    return 0;
+}
+
+
+/**
  * Set the parameters of the dsp device
- *****/
+ */
 int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
 {
     unsigned arg;
@@ -277,121 +319,141 @@ int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
     return 0;
 }
 
-/*****
- * Play a file
- *****/
-int play_file(const char *file_name)
+
+/**
+ * Prepare to play a file
+ */
+int open_music_buffer(const char *file_name, music_buffer_t *music_buf)
 {
-    /*****
-     * Step 1: opening the music file
-     *****/
-
-    // File Handler
-    music_file_t audio_file;
-
-    // Open file
-    audio_file.file = fopen (file_name, "r");
-    if (audio_file.file == NULL) {
-        fprintf(stderr, "Couldn't open the file!\n");
-        return 2;
-    }
-
-    // Look for magic number to determine file type
     int ret;
-    uint32_t magic_number;
-    MY_READ(audio_file.file, & magic_number, sizeof(magic_number));
-    magic_number = ntohl (magic_number);
 
-    if (magic_number == 0x52494646) {
-        printf("File supposedly a WAVE file.\n");
-        // Seems to be a RIFF file. Try to see if it's a WAVE one.
-        ret = wave_opener (& audio_file);
-    } else if (magic_number == 0x2e736e64) {
-        printf("File supposedly an AU file.\n");
-        // Decode file header
-        ret = au_opener (& audio_file);
-    } else {
-        fprintf(stderr, "File format not recognized.\n");
-        return 2;
-    }
-
+    // Zero music buffer
+    memset(music_buf, 0, sizeof(*music_buf));
+    music_buf->fd_dsp = -1;
+    
+    // Open the music file
+    ret = open_music_file(file_name, &(music_buf->info));
     if (ret) {
-        fprintf(stderr, "Header parsing failed! File may have been corrupted.\n");
-        return 2;
+        return ret;
     }
 
     // Compute and print file duration
-    unsigned const oct_per_sec = audio_file.bits_per_sample *
-        audio_file.sample_rate * audio_file.channels / 8;
-    float const duration = audio_file.data_size / oct_per_sec;
+    unsigned const oct_per_sec =
+        music_buf->info.bits_per_sample *
+        music_buf->info.sample_rate *
+        music_buf->info.channels / 8;
+    float const duration = music_buf->info.data_size / oct_per_sec;
     printf("File duration: %g seconds.\n", duration);
-
-
-    /*****
-     * Step 2: open and configure the dsp file
-     *****/
-
-    // Sound dev descriptor
-    int fd_dsp;
-
+    
     // Open sound device
-    fd_dsp = open ("/dev/dsp", O_WRONLY);
-    if (fd_dsp == -1) {
+    music_buf->fd_dsp = open("/dev/dsp", O_WRONLY);
+    if (music_buf->fd_dsp == -1) {
         perror("open: /dev/dsp");
+        close_music_buffer(music_buf);
         return 2;
     }
 
-    // Conguring sound device
-    ret = dsp_configuration (fd_dsp, & audio_file);
+    // Configure sound device
+    ret = dsp_configuration(music_buf->fd_dsp, &(music_buf->info));
     if (ret) {
         fprintf(stderr, "Configuration of sound device failed... :-(\n");
+        close_music_buffer(music_buf);
         return 2;
     }
 
-    /*****
-     * Step 3: let's rock baby !!!
-     *****/
+    // Alloc the playing buffer
+    music_buf->buf = malloc(music_buf->buf_size = BUF_SEC * oct_per_sec);
 
-    // Alloc the buffer used to play
-    unsigned int buf_size = BUF_SEC * oct_per_sec;
-    unsigned char *buf = malloc(buf_size);
-
-    if (!buf) {
+    if (!music_buf->buf) {
         fprintf(stderr, "Couldn't allocate the buffer to play the file.\n");
-        return 2;
-    }
-    fflush(stdout);
-
-    // Finally, we play the file
-    do {
-        // Read some data
-        MY_READ(audio_file.file, buf, buf_size);
-
-        size_t rl = ret;
-        ret = write(fd_dsp, buf, rl);
-        if (ret != rl) {
-            fprintf(stderr, "Writing to the sound device failed.\n");
-            return 2;
-        }
-    } while (ret);
-
-    if (ferror(audio_file.file)) {
-        fprintf(stderr, "An error occured while reading the file.\n");
+        close_music_buffer(music_buf);
         return 2;
     }
 
-    // Close the open files
-    close(fd_dsp);
-    fclose(audio_file.file);
-
-    // Free the memory
-    free(buf);
     return 0;
 }
 
-/*****
- * Main function
- *****/
+
+/**
+ * Free every resources associated with music_buf
+ */
+int close_music_buffer(music_buffer_t *music_buf)
+{
+    if (music_buf->fd_dsp != -1) {
+        close(music_buf->fd_dsp);
+        music_buf->fd_dsp = -1;
+    }
+    if (music_buf->info.file != NULL) {
+        fclose(music_buf->info.file);
+        music_buf->info.file = NULL;
+    }
+    if (music_buf->buf != NULL) {
+        free(music_buf->buf);
+        music_buf->buf = NULL;
+    }
+    return 0;
+}
+
+
+/**
+ * Play one step of the buffer
+ */
+int play_step_music_buffer(music_buffer_t *music_buf)
+{
+    size_t ret = 0;
+    MY_READ(music_buf->info.file, music_buf->buf, music_buf->buf_size);
+    size_t bytes = ret;
+    if (bytes == 0) {
+        if (!feof(music_buf->info.file)) {
+            return 0;
+        } else {
+            fprintf(stderr, "An error occured while reading the file.\n");
+            return 1;
+        }
+    }
+    ret = write(music_buf->fd_dsp,  music_buf->buf, bytes);
+    if (ret != bytes) {
+        fprintf(stderr, "Writing to the sound device failed.\n");
+        return 2;
+    }
+    return 0;
+}
+
+
+/**
+ * Test end of file
+ */
+int eof_music_buffer(music_buffer_t *music_buf)
+{
+    return (music_buf == NULL) ||
+        (music_buf->info.file == NULL) ||
+        feof(music_buf->info.file);
+}
+
+
+
+/**
+ * Play a file
+ */
+int play_file(const char *file_name)
+{
+    music_buffer_t music_buf;
+    int ret = open_music_buffer(file_name, &music_buf);
+    if (ret) return ret;
+    fflush(stdout);
+
+    // Play the file
+    while (!eof_music_buffer(&music_buf)) {
+        ret = play_step_music_buffer(&music_buf);
+        if (ret) break;
+    }
+    close_music_buffer(&music_buf);
+    return ret;
+}
+
+/**
+ * Main function of a simple player
+ */
 int player_main(int argc, char ** argv)
 {
     // Args
@@ -403,6 +465,5 @@ int player_main(int argc, char ** argv)
     // File name
     char const * file_name = argv[1];
     printf("File name: '%s'.\n", file_name);
-
     return play_file(file_name);
 }
