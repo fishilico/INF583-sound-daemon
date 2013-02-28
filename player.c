@@ -72,7 +72,7 @@ int wave_opener(music_file_t * file_info)
     MY_READ(file, & file_size, sizeof(file_size));
     file_size = U32_TO_LE(file_size);
     file_size += 8;
-    printf("File size: %u.\n", file_size);
+    printf("[WAV] File size: %u.\n", file_size);
 
     uint32_t magic_number;
     MY_READ(file, & magic_number, sizeof(magic_number));
@@ -93,12 +93,12 @@ int wave_opener(music_file_t * file_info)
     uint32_t header_size;
     MY_READ(file, & header_size, sizeof(header_size));
     header_size = U32_TO_LE (header_size);
-    printf("Header size: %u.\n", header_size);
+    printf("[WAV] Header size: %u.\n", header_size);
 
     uint16_t encoding;
     MY_READ(file, & encoding, sizeof(encoding));
     encoding = U16_TO_LE (encoding);
-    printf("WAVE encoding format: %u.\n", encoding);
+    printf("[WAV] WAVE encoding format: %u.\n", encoding);
     if (encoding != 1) {
         fprintf(stderr, "Encoding not supported. Sorry...\n");
         return 1;
@@ -107,29 +107,29 @@ int wave_opener(music_file_t * file_info)
     uint16_t channels;
     MY_READ(file, & channels, sizeof(channels));
     channels = U16_TO_LE (channels);
-    printf("Nb of channels: %u.\n", channels);
+    printf("[WAV] Nb of channels: %u.\n", channels);
     file_info -> channels = channels;
 
     uint32_t sample_rate;
     MY_READ(file, & sample_rate, sizeof(sample_rate));
     sample_rate = U32_TO_LE (sample_rate);
-    printf("Sample rate: %u.\n", sample_rate);
+    printf("[WAV] Sample rate: %u.\n", sample_rate);
     file_info -> sample_rate = sample_rate;
 
     uint32_t byte_rate;
     MY_READ(file, & byte_rate, sizeof(byte_rate));
     byte_rate = U32_TO_LE (byte_rate);
-    printf("Byte rate: %u.\n", byte_rate);
+    printf("[WAV] Byte rate: %u.\n", byte_rate);
 
     uint16_t block_align;
     MY_READ(file, & block_align, sizeof(block_align));
     block_align = U16_TO_LE (block_align);
-    printf("Block size: %u.\n", block_align);
+    printf("[WAV] Block size: %u.\n", block_align);
 
     uint16_t bits_per_sample;
     MY_READ(file, & bits_per_sample, sizeof(bits_per_sample));
     bits_per_sample = U16_TO_LE (bits_per_sample);
-    printf("Bits per sample: %u.\n", bits_per_sample);
+    printf("[WAV] Bits per sample: %u.\n", bits_per_sample);
     file_info -> bits_per_sample = bits_per_sample;
 
     uint_fast32_t oss_format;
@@ -166,7 +166,7 @@ int wave_opener(music_file_t * file_info)
     uint32_t data_size;
     MY_READ(file, & data_size, sizeof(data_size));
     data_size = U32_TO_LE (data_size);
-    printf("Data size: %u.\n",data_size);
+    printf("[WAV] Data size: %u.\n",data_size);
     file_info -> data_size = data_size;
 
     return 0;
@@ -184,18 +184,17 @@ int au_opener(music_file_t * file_info)
     uint32_t header_size;
     MY_READ(file, & header_size, sizeof(header_size));
     header_size = ntohl (header_size);
-    printf("Header size: %u.\n", header_size);
+    printf("[AU] Header size: %u.\n", header_size);
 
     uint32_t data_size;
     MY_READ(file, & data_size, sizeof(data_size));
     data_size = ntohl (data_size);
-    printf("Data size: %u.\n",data_size);
+    printf("[AU] Data size: %u.\n",data_size);
     file_info -> data_size = data_size;
 
     uint32_t encoding;
     MY_READ(file, & encoding, sizeof(encoding));
     encoding = ntohl (encoding);
-    printf("AU encoding format: %u.\n", encoding);
 
     unsigned oss_format;
     uint_fast32_t bits_per_sample;
@@ -203,16 +202,17 @@ int au_opener(music_file_t * file_info)
         case 2:
             bits_per_sample = 8;
             oss_format = AFMT_S8;
-            printf("=> Signed 8-bit.\n");
+            printf("[AU] Encoding format: Signed 8-bit.\n");
             break;
 
         case 3:
             bits_per_sample = 16;
             oss_format = AFMT_S16_BE;
-            printf("=> Signed 16-bit.\n");
+            printf("[AU] Encoding format: Signed 16-bit.\n");
             break;
 
         default:
+            printf("[AU] Encoding format: %u.\n", encoding);
             fprintf(stderr, "Encoding not supported. Sorry...\n");
             return 1;
     }
@@ -222,13 +222,13 @@ int au_opener(music_file_t * file_info)
     uint32_t sample_rate;
     MY_READ(file, & sample_rate, sizeof(sample_rate));
     sample_rate = ntohl (sample_rate);
-    printf("Sample rate: %u.\n", sample_rate);
+    printf("[AU] Sample rate: %u.\n", sample_rate);
     file_info -> sample_rate = sample_rate;
 
     uint32_t channels;
     MY_READ(file, & channels, sizeof(channels));
     channels = ntohl (channels);
-    printf("Nb of channels: %u.\n", channels);
+    printf("[AU] Nb of channels: %u.\n", channels);
     file_info -> channels = channels;
 
     // Position the cursor to the beginning of the data section
@@ -261,11 +261,9 @@ int open_music_file(const char *file_name, music_file_t *file_info)
     magic_number = ntohl (magic_number);
 
     if (magic_number == 0x52494646) {
-        printf("File supposedly a WAVE file.\n");
         // Seems to be a RIFF file. Try to see if it's a WAVE one.
         ret = wave_opener(file_info);
     } else if (magic_number == 0x2e736e64) {
-        printf("File supposedly an AU file.\n");
         // Decode file header
         ret = au_opener(file_info);
     } else {
@@ -429,7 +427,6 @@ int eof_music_buffer(music_buffer_t *music_buf)
         (music_buf->info.file == NULL) ||
         feof(music_buf->info.file);
 }
-
 
 
 /**
