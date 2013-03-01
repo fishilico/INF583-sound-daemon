@@ -231,7 +231,7 @@ Daemon control commands:\n\
     exit          terminate the daemon\n\
     pause         pause playback\n\
     play          resume playback\n\
-    play FILE     play given music file, in WAVE or AV format\n\
+    play FILE     play given music file, in WAVE or AU format\n\
     resume        resume playback\n\
     stop          stop playback\n\
 \n\
