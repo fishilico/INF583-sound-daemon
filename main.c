@@ -123,6 +123,9 @@ int main(int argc, char **argv)
         // Main loop
         char line[LINE_MAXLEN + 1];
         int running = 1;
+        pthread_t music_thread;
+        music_buffer_t music_buf;
+        init_music_buffer(&music_buf);
         while (ret == 0 && running && !has_terminated_signal) {
             // Open the FIFO
             int fifo = open(DAEMON_FIFOFILE, O_RDONLY);
@@ -147,13 +150,36 @@ int main(int argc, char **argv)
                     break;
                 } else if (!strncasecmp(line, "play ", 5)) {
                     const char *filename = line + 5;
+                    if (music_buf.playing) {
+                        printf("Stopping current music\n");
+                        ret = stop_play_loop_music_buffer(music_thread, &music_buf);
+                        if (ret) {
+                            printf("stopping music failed\n");
+                            continue;
+                        }
+                        close_music_buffer(&music_buf);
+                    }
                     printf("Playing %s\n", filename);
                     fflush(stdout);
-                    if (play_file(filename)) {
-                        fprintf(stderr, "play_file failed\n");
-                    } else {
-                        printf("Playing ended\n");
+                    if (open_music_buffer(filename, &music_buf)) {
+                        fprintf(stderr, "open_music_buffe failed\n");
                     }
+                    if (start_play_loop_music_buffer(&music_thread, &music_buf)) {
+                        // If playing fails, close music buffer
+                        close_music_buffer(&music_buf);
+                    }
+                } else if (!strncasecmp(line, "stop", 4)) {
+                    // A file has to be running before stopping it
+                    if (!music_buf.playing) {
+                        continue;
+                    }
+                    printf("Stopping current music\n");
+                    ret = stop_play_loop_music_buffer(music_thread, &music_buf);
+                    if (ret) {
+                        printf("stopping music failed\n");
+                        continue;
+                    }
+                    close_music_buffer(&music_buf);
                 }
             }
 
@@ -165,6 +191,7 @@ int main(int argc, char **argv)
             // Got an error or an end of file, close FIFO
             close(fifo);
         }
+        destroy_music_buffer(&music_buf);
 
         unlink(DAEMON_FIFOFILE);
         printf("<< Daemon now exits with value %d\n", ret);

@@ -292,7 +292,7 @@ int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
 
     // Nb of channels
     arg = audio_file -> channels;
-    MY_IOCTL (fd_dsp, SNDCTL_DSP_CHANNELS, & arg);
+    MY_IOCTL(fd_dsp, SNDCTL_DSP_CHANNELS, & arg);
     if (arg != audio_file -> channels) {
         fprintf(stderr, "This number of channels not supported by OSS! Sorry...\n");
         return 1;
@@ -300,7 +300,7 @@ int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
 
     // Sample format
     arg = audio_file -> oss_format;
-    MY_IOCTL (fd_dsp, SNDCTL_DSP_SETFMT, & arg);
+    MY_IOCTL(fd_dsp, SNDCTL_DSP_SETFMT, & arg);
     if (arg != audio_file -> oss_format) {
         fprintf(stderr, "Unable to set OSS sample format.\n");
         return 1;
@@ -308,7 +308,7 @@ int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
 
     // Sample rate
     arg = audio_file -> sample_rate;
-    MY_IOCTL (fd_dsp, SNDCTL_DSP_SPEED, & arg);
+    MY_IOCTL(fd_dsp, SNDCTL_DSP_SPEED, & arg);
     if (arg != audio_file -> sample_rate) {
         fprintf(stderr, "This sample rate is not supported by OSS... Sorry!\n");
         return 1;
@@ -319,16 +319,72 @@ int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
 
 
 /**
+ * Initialise a music buffer
+ */
+int init_music_buffer(music_buffer_t *music_buf)
+{
+    if (music_buf == NULL) return 1;
+    memset(music_buf, 0, sizeof(*music_buf));
+    music_buf->fd_dsp = -1;
+    int ret = pthread_mutex_init(&(music_buf->mutex), NULL);
+    if (ret) {
+        fprintf(stderr, "pthread_mutex_init failed: %d\n", ret);
+    }
+    return ret;
+}
+
+
+/**
+ * Destroy a music buffer
+ */
+int destroy_music_buffer(music_buffer_t *music_buf)
+{
+    if (music_buf == NULL) return 1;
+    int ret = pthread_mutex_destroy(&(music_buf->mutex));
+    if (ret) {
+        fprintf(stderr, "pthread_mutex_destroy failed: %d\n", ret);
+    }
+    return ret;
+}
+
+
+/**
+ * (internal) Lock the mutex
+ */
+static int lock_music_buffer(music_buffer_t *music_buf)
+{
+    int ret = pthread_mutex_lock(&(music_buf->mutex));
+    if (ret) {
+        fprintf(stderr, "pthread_mutex_lock failed: %d\n", ret);
+    }
+    return ret;
+}
+
+
+/**
+ * (internal) Unlock the mutex
+ */
+static int unlock_music_buffer(music_buffer_t *music_buf)
+{
+    int ret = pthread_mutex_unlock(&(music_buf->mutex));
+    if (ret) {
+        fprintf(stderr, "pthread_mutex_unlock failed: %d\n", ret);
+    }
+    return ret;
+}
+
+
+/**
  * Prepare to play a file
  */
 int open_music_buffer(const char *file_name, music_buffer_t *music_buf)
 {
     int ret;
+    ret = init_music_buffer(music_buf);
+    if (ret) {
+        return ret;
+    }
 
-    // Zero music buffer
-    memset(music_buf, 0, sizeof(*music_buf));
-    music_buf->fd_dsp = -1;
-    
     // Open the music file
     ret = open_music_file(file_name, &(music_buf->info));
     if (ret) {
@@ -342,7 +398,7 @@ int open_music_buffer(const char *file_name, music_buffer_t *music_buf)
         music_buf->info.channels / 8;
     float const duration = music_buf->info.data_size / oct_per_sec;
     printf("File duration: %g seconds.\n", duration);
-    
+
     // Open sound device
     music_buf->fd_dsp = open("/dev/dsp", O_WRONLY);
     if (music_buf->fd_dsp == -1) {
@@ -399,16 +455,20 @@ int close_music_buffer(music_buffer_t *music_buf)
 int play_step_music_buffer(music_buffer_t *music_buf)
 {
     size_t ret = 0;
+    if (lock_music_buffer(music_buf)) return 1;
     MY_READ(music_buf->info.file, music_buf->buf, music_buf->buf_size);
     size_t bytes = ret;
     if (bytes == 0) {
         if (!feof(music_buf->info.file)) {
+            unlock_music_buffer(music_buf);
             return 0;
         } else {
             fprintf(stderr, "An error occured while reading the file.\n");
+            unlock_music_buffer(music_buf);
             return 1;
         }
     }
+    unlock_music_buffer(music_buf);
     ret = write(music_buf->fd_dsp,  music_buf->buf, bytes);
     if (ret != bytes) {
         fprintf(stderr, "Writing to the sound device failed.\n");
@@ -423,11 +483,67 @@ int play_step_music_buffer(music_buffer_t *music_buf)
  */
 int eof_music_buffer(music_buffer_t *music_buf)
 {
-    return (music_buf == NULL) ||
-        (music_buf->info.file == NULL) ||
-        feof(music_buf->info.file);
+    if (music_buf == NULL || music_buf->info.file == NULL) {
+        return 1;
+    }
+    // music_buf->info.file is a shared resource among threads
+    if (lock_music_buffer(music_buf)) return 1;
+    int ret = feof(music_buf->info.file);
+    unlock_music_buffer(music_buf);
+    return ret;
 }
 
+
+/**
+ * Play music file in a loop
+ */
+int play_loop_music_buffer(music_buffer_t *music_buf)
+{
+    int ret = 0;
+    music_buf->playing = 1;
+    while (music_buf->playing && !eof_music_buffer(music_buf)) {
+        ret = play_step_music_buffer(music_buf);
+        if (ret) break;
+    }
+    return ret;
+}
+
+
+/**
+ * Play music file in a thread
+ */
+static void* routine_play_loop_music_buffer(void *music_buf)
+{
+    play_loop_music_buffer((music_buffer_t*)music_buf);
+    return NULL;
+}
+int start_play_loop_music_buffer(pthread_t *thread, music_buffer_t *music_buf)
+{
+    music_buf->playing = 1;
+    int ret = pthread_create(thread, NULL, routine_play_loop_music_buffer,
+                             music_buf);
+    if (ret) {
+        fprintf(stderr, "pthread_create returned error code %d\n", ret);
+        return 1;
+    }
+    return 0;
+}
+
+/**
+ * Stop playing thread
+ */
+int stop_play_loop_music_buffer(pthread_t thread, music_buffer_t *music_buf)
+{
+    int ret;
+    music_buf->playing = 0;
+    MY_IOCTL(music_buf->fd_dsp, SNDCTL_DSP_RESET, NULL);
+    ret = pthread_join(thread, NULL);
+    if (ret) {
+        fprintf(stderr, "pthread_join returned error code %d\n", ret);
+        return 1;
+    }
+    return 0;
+}
 
 /**
  * Play a file
@@ -440,10 +556,7 @@ int play_file(const char *file_name)
     fflush(stdout);
 
     // Play the file
-    while (!eof_music_buffer(&music_buf)) {
-        ret = play_step_music_buffer(&music_buf);
-        if (ret) break;
-    }
+    ret = play_loop_music_buffer(&music_buf);
     close_music_buffer(&music_buf);
     return ret;
 }

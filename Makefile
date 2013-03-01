@@ -2,7 +2,7 @@
 CC = gcc
 CFLAGS = -Wall -pedantic -g -std=c99
 LD = gcc
-LDFLAGS = -Wall -pedantic -g -std=c99
+LDFLAGS = -Wall -pedantic -g -std=c99 -lpthread
 
 # Recompile everything if headers change
 HEADERS = daemon.h player.h
