@@ -154,15 +154,16 @@ int main(int argc, char **argv)
                         ret = stop_play_loop_music_buffer(music_thread, &music_buf);
                         if (ret) {
                             printf("stopping music failed\n");
+                            fflush(stdout);
                             continue;
                         }
                         close_music_buffer(&music_buf);
                     }
                     printf("Playing %s\n", filename);
+                    fflush(stdout);
                     if (open_music_buffer(filename, &music_buf)) {
-                        fprintf(stderr, "open_music_buffe failed\n");
-                    }
-                    if (start_play_loop_music_buffer(&music_thread, &music_buf)) {
+                        fprintf(stderr, "open_music_buffer failed\n");
+                    } else if (start_play_loop_music_buffer(&music_thread, &music_buf)) {
                         // If playing fails, close music buffer
                         close_music_buffer(&music_buf);
                     }

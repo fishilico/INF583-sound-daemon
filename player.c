@@ -9,6 +9,7 @@
 #include <sys/soundcard.h>
 #include <netinet/in.h>
 #include "player.h"
+#include <errno.h>
 
 // Length of the buffer in milliseconds
 #define BUF_MSEC 40
@@ -300,8 +301,19 @@ int dsp_configuration(int const fd_dsp, music_file_t const * audio_file)
 
     // Sample format
     arg = audio_file -> oss_format;
-    MY_IOCTL(fd_dsp, SNDCTL_DSP_SETFMT, & arg);
-    if (arg != audio_file -> oss_format) {
+    unsigned format = audio_file -> oss_format;
+    // Some sound cards don't support AFMT_S8 but use AFMT_U8 instead...
+    ret = ioctl(fd_dsp, SNDCTL_DSP_SETFMT, &arg);
+    if (ret == -1 && errno == EINVAL && format == AFMT_S8) {
+        arg = format = AFMT_U8;
+        ret = ioctl(fd_dsp, SNDCTL_DSP_SETFMT, &arg);
+    }
+    if (ret == -1) {
+        perror ("ioctl");
+        return 2;
+    }
+
+    if (arg != format) {
         fprintf(stderr, "Unable to set OSS sample format.\n");
         return 1;
     }
