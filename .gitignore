@@ -1,10 +1,13 @@
 *.au
+*.bz2
 *.fifo
+*.gz
 *.lock
 *.log
 *.mp3
 *.o
 *.pid
+*.zip
 *~
 /subject
 /player
