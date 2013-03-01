@@ -142,7 +142,7 @@ int main(int argc, char **argv)
             // Read lines
             int fifo_status = 0;
             while ((fifo_status = read_line(fifo, line, LINE_MAXLEN, NULL)) == 0) {
-                printf("Reading line: %s\n", line);
+                printf("[Command] Reading '%s'\n", line);
 
                 if (!strcasecmp(line, "exit")) {
                     running = 0;
