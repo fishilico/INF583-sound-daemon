@@ -183,7 +183,7 @@ int main(int argc, char **argv)
                         pause_loop_music_buffer(&music_buf);
                         printf("-- PAUSE --\n");
                     }
-                } else if (!strcasecmp(line, "play")) {
+                } else if (!strcasecmp(line, "play") || !strcasecmp(line, "resume")) {
                     if (music_buf.playing) {
                         resume_loop_music_buffer(&music_buf);
                         printf("-- PLAYING --\n");
@@ -209,6 +209,7 @@ int main(int argc, char **argv)
     } else {
         // Interface process
         printf(">> Interface is running :)\n");
+        printf("Please type \"help\" to get help\n");
         fflush(stdout);
 
         // Open the FIFO in write only
@@ -223,9 +224,25 @@ int main(int argc, char **argv)
         char line[LINE_MAXLEN + 1];
         const char *prompt = "Player> ";
         while ((stdin_status = read_line(STDIN_FILENO, line, LINE_MAXLEN, prompt)) == 0) {
-            if (line[0] != '!') {
+            if (!strcasecmp(line, "help") || !strcasecmp(line, "!help")) {
+                // Show help
+                printf("\
+Daemon control commands:\n\
+    exit          terminate the daemon\n\
+    pause         pause playback\n\
+    play          resume playback\n\
+    play FILE     play given music file, in WAVE or AV format\n\
+    resume        resume playback\n\
+    stop          stop playback\n\
+\n\
+Interface commands:\n\
+    help          show this help\n\
+    !exit         quit the interface without terminating the daemon\n\
+\n");
+            } else if (line[0] != '!') {
                 // Send command
                 int len = strlen(line);
+                // Append an end-of-line character to line
                 // As len < LINE_MAXLEN, len + 1 < sizeof(line) and there is no overflow
                 line[len] = '\n';
                 line[len + 1] = 0;
