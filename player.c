@@ -10,8 +10,8 @@
 #include <netinet/in.h>
 #include "player.h"
 
-// Length of the buffer in seconds
-#define BUF_SEC 2
+// Length of the buffer in milliseconds
+#define BUF_MSEC 40
 
 
 // Convenient macros for system calls
@@ -329,6 +329,12 @@ int init_music_buffer(music_buffer_t *music_buf)
     int ret = pthread_mutex_init(&(music_buf->mutex), NULL);
     if (ret) {
         fprintf(stderr, "pthread_mutex_init failed: %d\n", ret);
+        return 1;
+    }
+    ret = pthread_cond_init(&(music_buf->cond), NULL);
+    if (ret) {
+        fprintf(stderr, "pthread_cond_init failed: %d\n", ret);
+        return 1;
     }
     return ret;
 }
@@ -340,9 +346,15 @@ int init_music_buffer(music_buffer_t *music_buf)
 int destroy_music_buffer(music_buffer_t *music_buf)
 {
     if (music_buf == NULL) return 1;
-    int ret = pthread_mutex_destroy(&(music_buf->mutex));
+    int ret = pthread_cond_destroy(&(music_buf->cond));
     if (ret) {
         fprintf(stderr, "pthread_mutex_destroy failed: %d\n", ret);
+        return 1;
+    }
+    ret = pthread_mutex_destroy(&(music_buf->mutex));
+    if (ret) {
+        fprintf(stderr, "pthread_mutex_destroy failed: %d\n", ret);
+        return 1;
     }
     return ret;
 }
@@ -416,7 +428,7 @@ int open_music_buffer(const char *file_name, music_buffer_t *music_buf)
     }
 
     // Alloc the playing buffer
-    music_buf->buf = malloc(music_buf->buf_size = BUF_SEC * oct_per_sec);
+    music_buf->buf = malloc(music_buf->buf_size = BUF_MSEC * oct_per_sec / 1000);
 
     if (!music_buf->buf) {
         fprintf(stderr, "Couldn't allocate the buffer to play the file.\n");
@@ -470,7 +482,8 @@ int play_step_music_buffer(music_buffer_t *music_buf)
     }
     unlock_music_buffer(music_buf);
     ret = write(music_buf->fd_dsp,  music_buf->buf, bytes);
-    if (ret != bytes) {
+    // An error may happen when stopping playback
+    if (ret != bytes && music_buf->playing) {
         fprintf(stderr, "Writing to the sound device failed.\n");
         return 2;
     }
@@ -502,6 +515,21 @@ int play_loop_music_buffer(music_buffer_t *music_buf)
     int ret = 0;
     music_buf->playing = 1;
     while (music_buf->playing && !eof_music_buffer(music_buf)) {
+        // Pause music
+        if (lock_music_buffer(music_buf)) return 1;
+        while (music_buf->pausing) {
+            ret = pthread_cond_wait(&(music_buf->cond), &(music_buf->mutex));
+            if (ret) {
+                fprintf(stderr, "pthread_cond_wait failed: %d\n", ret);
+                unlock_music_buffer(music_buf);
+                return 1;
+            }
+        }
+        int is_playing = music_buf->playing;
+        unlock_music_buffer(music_buf);
+        if (!is_playing) break;
+
+        // Play again
         ret = play_step_music_buffer(music_buf);
         if (ret) break;
     }
@@ -520,6 +548,7 @@ static void* routine_play_loop_music_buffer(void *music_buf)
 int start_play_loop_music_buffer(pthread_t *thread, music_buffer_t *music_buf)
 {
     music_buf->playing = 1;
+    music_buf->pausing = 0;
     int ret = pthread_create(thread, NULL, routine_play_loop_music_buffer,
                              music_buf);
     if (ret) {
@@ -536,12 +565,37 @@ int stop_play_loop_music_buffer(pthread_t thread, music_buffer_t *music_buf)
 {
     int ret;
     music_buf->playing = 0;
+    music_buf->pausing = 0;
     MY_IOCTL(music_buf->fd_dsp, SNDCTL_DSP_RESET, NULL);
     ret = pthread_join(thread, NULL);
     if (ret) {
         fprintf(stderr, "pthread_join returned error code %d\n", ret);
         return 1;
     }
+    return 0;
+}
+
+/**
+ * Pause playing
+ */
+int pause_loop_music_buffer(music_buffer_t *music_buf)
+{
+    if (lock_music_buffer(music_buf)) return 1;
+    music_buf->pausing = 1;
+    unlock_music_buffer(music_buf);
+    pthread_cond_broadcast(&(music_buf->cond));
+    return 0;
+}
+
+/**
+ * Resume playing
+ */
+int resume_loop_music_buffer(music_buffer_t *music_buf)
+{
+    if (lock_music_buffer(music_buf)) return 1;
+    music_buf->pausing = 0;
+    unlock_music_buffer(music_buf);
+    pthread_cond_broadcast(&(music_buf->cond));
     return 0;
 }
 

@@ -25,9 +25,10 @@ typedef struct {
     size_t buf_size;
     unsigned char *buf;
 
-    // Playing thread and mutex
+    // Playing thread, mutex and condition
     pthread_t thread;
     pthread_mutex_t mutex;
+    pthread_cond_t cond;
 
     // State: playing file, in a pause
     int playing;
@@ -47,6 +48,8 @@ int eof_music_buffer(music_buffer_t *music_buf);
 int play_loop_music_buffer(music_buffer_t *music_buf);
 int start_play_loop_music_buffer(pthread_t *thread, music_buffer_t *music_buf);
 int stop_play_loop_music_buffer(pthread_t thread, music_buffer_t *music_buf);
+int pause_loop_music_buffer(music_buffer_t *music_buf);
+int resume_loop_music_buffer(music_buffer_t *music_buf);
 int play_file(const char *file_name);
 int player_main(int argc, char ** argv);
 

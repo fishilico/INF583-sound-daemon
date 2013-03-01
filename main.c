@@ -143,7 +143,6 @@ int main(int argc, char **argv)
             int fifo_status = 0;
             while ((fifo_status = read_line(fifo, line, LINE_MAXLEN, NULL)) == 0) {
                 printf("Reading line: %s\n", line);
-                fflush(stdout);
 
                 if (!strcasecmp(line, "exit")) {
                     running = 0;
@@ -160,7 +159,6 @@ int main(int argc, char **argv)
                         close_music_buffer(&music_buf);
                     }
                     printf("Playing %s\n", filename);
-                    fflush(stdout);
                     if (open_music_buffer(filename, &music_buf)) {
                         fprintf(stderr, "open_music_buffe failed\n");
                     }
@@ -168,7 +166,7 @@ int main(int argc, char **argv)
                         // If playing fails, close music buffer
                         close_music_buffer(&music_buf);
                     }
-                } else if (!strncasecmp(line, "stop", 4)) {
+                } else if (!strcasecmp(line, "stop")) {
                     // A file has to be running before stopping it
                     if (!music_buf.playing) {
                         continue;
@@ -180,7 +178,18 @@ int main(int argc, char **argv)
                         continue;
                     }
                     close_music_buffer(&music_buf);
+                } else if (!strcasecmp(line, "pause")) {
+                    if (music_buf.playing) {
+                        pause_loop_music_buffer(&music_buf);
+                        printf("-- PAUSE --\n");
+                    }
+                } else if (!strcasecmp(line, "play")) {
+                    if (music_buf.playing) {
+                        resume_loop_music_buffer(&music_buf);
+                        printf("-- PLAYING --\n");
+                    }
                 }
+                fflush(stdout);
             }
 
             if (fifo_status == -1) {
