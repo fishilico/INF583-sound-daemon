@@ -549,6 +549,7 @@ int start_play_loop_music_buffer(pthread_t *thread, music_buffer_t *music_buf)
 {
     music_buf->playing = 1;
     music_buf->pausing = 0;
+    pthread_cond_broadcast(&(music_buf->cond));
     int ret = pthread_create(thread, NULL, routine_play_loop_music_buffer,
                              music_buf);
     if (ret) {
@@ -566,6 +567,7 @@ int stop_play_loop_music_buffer(pthread_t thread, music_buffer_t *music_buf)
     int ret;
     music_buf->playing = 0;
     music_buf->pausing = 0;
+    pthread_cond_broadcast(&(music_buf->cond));
     MY_IOCTL(music_buf->fd_dsp, SNDCTL_DSP_RESET, NULL);
     ret = pthread_join(thread, NULL);
     if (ret) {
